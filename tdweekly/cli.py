@@ -139,6 +139,30 @@ def cmd_raw_read(cfg: AppConfig, args) -> int:
     return 0
 
 
+def cmd_headers(cfg: AppConfig, args) -> int:
+    """打印某一行的表头(列字母=表头名), 用来做 fill_map。"""
+    from .a1 import index_to_col
+
+    t = cfg.target(args.target)
+    client = _client(cfg)
+    row = args.row or 2
+    rng = f"{t.first_col}{row}:{t.last_col}{row}"
+    grid = client.get_grid(t.book_id, t.sheet_id, rng)
+    cells = grid[0] if grid else []
+    base = t.first_col_idx_abs
+    items = []
+    for i, c in enumerate(cells):
+        v = c.get("value")
+        if isinstance(v, str):
+            v = v.strip()
+        if v not in (None, ""):
+            items.append(f"{index_to_col(base + i)}={v}")
+    print(f"[{t.name}] 第 {row} 行表头({len(items)} 个非空):")
+    for it in items:
+        print("  " + it)
+    return 0
+
+
 def _print_plan(t: Target, plan: core.CopyPlan) -> None:
     print(f"[{t.name}] 复制源: 第 {plan.src_start_row}-{plan.src_end_row} 行 "
           f"({plan.prev_date})  ->  新块: 第 {plan.new_start_row}-{plan.new_end_row} 行 "
@@ -178,6 +202,10 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--all", action="store_true", help="处理 config 里所有 targets")
     pp.add_argument("--apply", action="store_true", help="真正写入(不加则仅预览)")
 
+    ph = sub.add_parser("headers", help="打印表头(列字母=表头名), 用于生成 fill_map")
+    ph.add_argument("--target", help="子表名(默认第一个)")
+    ph.add_argument("--row", type=int, help="表头所在行(默认 2)")
+
     rr = sub.add_parser("raw-read", help="调试: 打印读取接口原始 JSON")
     rr.add_argument("--target", help="子表名(默认第一个)")
     rr.add_argument("--range", help="读取范围, 如 A1:B5")
@@ -191,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
         "auth": cmd_auth,
         "read": cmd_read,
         "run": cmd_run,
+        "headers": cmd_headers,
         "raw-read": cmd_raw_read,
     }
     try:
