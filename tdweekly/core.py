@@ -150,8 +150,9 @@ def build_copy_plan(
 
     规则(复刻"手动复制粘贴 + 改日期"):
       - 日期列: 仅新块第一行写 new_date, 其余行留空(留给合并单元格)。
-      - clear 列: 全部留空。
-      - 有公式的单元格: 公式行号整体下移 height 行后写入。
+      - 有公式的单元格: 公式行号整体下移 height 行后写入(**公式始终保留**,
+        即便该列在 clear_cols 里 —— 例如父ASIN 汇总行的 SUM 公式应保留并重新汇总)。
+      - clear 列里"非公式"的单元格: 留空(这才是你每周手填的实际数据)。
       - 其余(常量, 如 SKU/ASIN 文本): 原值照抄; 空值则留空。
     """
     delta = block.height  # 向下移动的行数 = 块高
@@ -173,12 +174,13 @@ def build_copy_plan(
                     OutCell("value", value=new_date) if r == 0 else OutCell("blank")
                 )
                 continue
-            if c in clear_col_indexes:
-                out_row.append(OutCell("blank"))
-                continue
+            # 公式优先: 始终保留并平移(即便在 clear 列, 如汇总行的 SUM)
             formula = cell.get("formula")
             if formula:
                 out_row.append(OutCell("formula", formula=shift_formula_rows(formula, delta)))
+                continue
+            if c in clear_col_indexes:  # 非公式的手填数据列 -> 留空
+                out_row.append(OutCell("blank"))
                 continue
             value = cell.get("value")
             if value in (None, ""):

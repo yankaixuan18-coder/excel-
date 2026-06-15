@@ -117,6 +117,37 @@ class TestBuildCopyPlan(unittest.TestCase):
         self.assertEqual(plan.rows[0][3].kind, "blank")
         self.assertEqual(plan.rows[2][3].kind, "blank")
 
+    def test_formula_in_clear_col_is_preserved(self):
+        # 父ASIN 汇总行在"销量"列是 SUM 公式, 即便该列被列入 clear_cols 也应保留
+        block = Block(start_row=10, end_row=12, prev_date="6.7-6.13")  # height 3
+        grid = [
+            [  # 父ASIN 行: D 列是汇总公式
+                {"value": "6.7-6.13", "formula": None},
+                {"value": "父ASIN", "formula": None},
+                {"value": 41, "formula": "=SUM(C11:C12)"},
+            ],
+            [  # SKU 行: C 列是手填数值
+                {"value": "", "formula": None},
+                {"value": "sku1", "formula": None},
+                {"value": 20, "formula": None},
+            ],
+            [
+                {"value": "", "formula": None},
+                {"value": "sku2", "formula": None},
+                {"value": 21, "formula": None},
+            ],
+        ]
+        plan = build_copy_plan(
+            block, grid, new_date="6.14-6.20",
+            date_col_index=0, clear_col_indexes={2},  # C 列(销量)在 clear 里
+        )
+        # 父ASIN 行的 SUM 公式应保留并平移(+3): C11:C12 -> C14:C15
+        self.assertEqual(plan.rows[0][2].kind, "formula")
+        self.assertEqual(plan.rows[0][2].formula, "=SUM(C14:C15)")
+        # SKU 行的手填数值应留空
+        self.assertEqual(plan.rows[1][2].kind, "blank")
+        self.assertEqual(plan.rows[2][2].kind, "blank")
+
 
 if __name__ == "__main__":
     unittest.main()
