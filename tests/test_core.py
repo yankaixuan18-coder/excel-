@@ -176,6 +176,49 @@ class TestBuildCopyPlan(unittest.TestCase):
         self.assertEqual(plan.rows[1][2].kind, "blank")
         self.assertEqual(plan.rows[2][2].kind, "blank")
 
+    def test_clear_from_col_and_fill(self):
+        # 整行复制: BC(下标5)起清空; F(下标2)按数据填; 公式列保留
+        block = Block(start_row=2, end_row=2, prev_date="6.7-13")  # 单行块
+        grid = [[
+            {"value": "6.7-13", "formula": None},  # 0 日期
+            {"value": "sku", "formula": None},     # 1 常量
+            {"value": 99, "formula": None},        # 2 库存(原值, 将被数据覆盖)
+            {"value": 0.5, "formula": "=C2/B2"},   # 3 公式(应保留并平移)
+            {"value": "老备注", "formula": None},   # 4 (<BC, 照抄)
+            {"value": "比价方案旧", "formula": None},# 5 BC -> 清空
+            {"value": "效果旧", "formula": None},    # 6 -> 清空
+        ]]
+        plan = build_copy_plan(
+            block, grid, new_date="6.14-20", date_col_index=0,
+            clear_col_indexes=set(), clear_from_index=5,
+            fill_map_idx={2: "inventory"},
+            row_fill=[{"inventory": 295}],
+        )
+        row = plan.rows[0]
+        self.assertEqual(row[0].value, "6.14-20")        # 日期
+        self.assertEqual(row[1].value, "sku")            # 常量照抄
+        self.assertEqual(row[2].value, 295)              # 数据填充覆盖原值
+        self.assertEqual(row[3].formula, "=C3/B3")       # 公式保留并平移
+        self.assertEqual(row[4].value, "老备注")          # <BC 照抄
+        self.assertEqual(row[5].kind, "blank")           # BC 清空
+        self.assertEqual(row[6].kind, "blank")           # BC 之后清空
+
+    def test_formula_not_overwritten_by_fill(self):
+        # 即便某列在 fill_map, 若源是公式(如汇总行), 也保留公式不被数据覆盖
+        block = Block(start_row=2, end_row=2, prev_date="6.7-13")
+        grid = [[
+            {"value": "6.7-13", "formula": None},
+            {"value": 0, "formula": "=SUM(C3:C5)"},  # 1 汇总公式
+        ]]
+        plan = build_copy_plan(
+            block, grid, new_date="6.14-20", date_col_index=0,
+            clear_col_indexes=set(), fill_map_idx={1: "inventory"},
+            row_fill=[{"inventory": 999}],
+        )
+        # 仍是公式(平移后), 而不是被数据值 999 覆盖
+        self.assertEqual(plan.rows[0][1].kind, "formula")
+        self.assertEqual(plan.rows[0][1].formula, "=SUM(C4:C6)")
+
     def test_date_offset_places_date_on_correct_row(self):
         # 李子向式: 块首是父ASIN行, 日期在第2行(offset 1)
         block = Block(start_row=3, end_row=6, prev_date="6.7-13", date_offset=1)  # height 4

@@ -190,21 +190,26 @@ def build_copy_plan(
     new_date: str,
     date_col_index: int,
     clear_col_indexes: set[int],
+    clear_from_index: int | None = None,
+    fill_map_idx: dict[int, str] | None = None,
+    row_fill: list[dict | None] | None = None,
 ) -> CopyPlan:
     """根据上一周的块 + 读到的源单元格, 生成新块每个单元格的写入方案。
 
     source_grid: 长度 = block.height 的二维列表; 每个单元格是
-                 {"value": <显示值>, "formula": <公式串或 None>}。
-                 第 0 列对应表格里的"第一列"(通常就是 A 列)。
-    date_col_index: 日期列相对 source_grid 第 0 列的下标(A 列且从 A 开始读 => 0)。
-    clear_col_indexes: 这些列在新块里留空(每周手动填的实际数据列)。
+                 {"value": <显示值>, "formula": <公式串或 None>}。第 0 列 = first_col。
+    date_col_index   : 日期列相对 first_col 的下标。
+    clear_col_indexes: 这些列留空。
+    clear_from_index : 此下标及其右边的列全部留空(BC 起的备注列)。
+    fill_map_idx     : {相对列下标: 数据字段名}, 用 row_fill 里的数据填这些列。
+    row_fill         : 每行匹配到的数据记录(或 None), 长度与 source_grid 对齐。
 
-    规则(复刻"手动复制粘贴 + 改日期"):
-      - 日期列: 仅新块第一行写 new_date, 其余行留空(留给合并单元格)。
-      - 有公式的单元格: 公式行号整体下移 height 行后写入(**公式始终保留**,
-        即便该列在 clear_cols 里 —— 例如父ASIN 汇总行的 SUM 公式应保留并重新汇总)。
-      - clear 列里"非公式"的单元格: 留空(这才是你每周手填的实际数据)。
-      - 其余(常量, 如 SKU/ASIN 文本): 原值照抄; 空值则留空。
+    单元格优先级(从高到低):
+      1. 日期列: 在与源块相同的相对行写 new_date, 其余留空。
+      2. 公式: 行号下移 height 后保留(**永不被填数/清空覆盖**, 如汇总 SUM、转化率)。
+      3. 数据填充: 该列在 fill_map 且该行匹配到数据 -> 写入数据值。
+      4. 清空: 在 clear_cols, 或 >= clear_from_index -> 留空。
+      5. 常量: 原值照抄; 空值留空。
     """
     delta = block.height  # 向下移动的行数 = 块高
     plan = CopyPlan(
@@ -219,29 +224,31 @@ def build_copy_plan(
     )
 
     for r, src_row in enumerate(source_grid):
+        matched = row_fill[r] if (row_fill and r < len(row_fill)) else None
         out_row: list[OutCell] = []
         for c, cell in enumerate(src_row):
-            if c == date_col_index:
-                # 新日期写在与源块相同的相对行; 其余行留空(供合并)
+            if c == date_col_index:  # 1. 日期
                 out_row.append(
                     OutCell("value", value=new_date)
                     if r == block.date_offset
                     else OutCell("blank")
                 )
                 continue
-            # 公式优先: 始终保留并平移(即便在 clear 列, 如汇总行的 SUM)
-            formula = cell.get("formula")
-            if formula:
-                out_row.append(OutCell("formula", formula=shift_formula_rows(formula, delta)))
+            if cell.get("formula"):  # 2. 公式: 始终保留并平移
+                out_row.append(OutCell("formula", formula=shift_formula_rows(cell["formula"], delta)))
                 continue
-            if c in clear_col_indexes:  # 非公式的手填数据列 -> 留空
+            if fill_map_idx and matched and c in fill_map_idx:  # 3. 数据填充
+                val = matched.get(fill_map_idx[c])
+                if val not in (None, ""):
+                    out_row.append(OutCell("value", value=val))
+                    continue
+            if c in clear_col_indexes or (  # 4. 清空
+                clear_from_index is not None and c >= clear_from_index
+            ):
                 out_row.append(OutCell("blank"))
                 continue
-            value = cell.get("value")
-            if value in (None, ""):
-                out_row.append(OutCell("blank"))
-            else:
-                out_row.append(OutCell("value", value=value))
+            value = cell.get("value")  # 5. 常量
+            out_row.append(OutCell("blank") if value in (None, "") else OutCell("value", value=value))
         plan.rows.append(out_row)
 
     return plan

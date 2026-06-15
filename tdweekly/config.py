@@ -20,8 +20,13 @@ class Target:
     marker_col: str = "B" # 定位"父ASIN"行与块末行的列(通常是 SKU 列)
     parent_text: str = "父ASIN"  # 块首标记文字(出现在 marker_col)
     first_col: str = "A"  # 读取/写入的起始列
-    last_col: str = "BZ"  # 读取/写入的结束列(覆盖你所有数据列即可)
-    clear_cols: list[str] = field(default_factory=list)  # 每周手动填、新块留空的列
+    last_col: str = "BZ"  # 读取/写入的结束列(覆盖你所有列, 含 BC 之后的备注列)
+    clear_cols: list[str] = field(default_factory=list)  # 指定留空的列
+    clear_from_col: str = ""  # 此列及其右边全部清空(如 "BC": 比价方案/效果/改动内容)
+    asin_col: str = "D"       # ASIN 所在列(用于按 ASIN 匹配数据)
+    country: str = ""         # 站点中文名(如 "加拿大"); 留空则按 country_code / 标签名推断
+    country_code: str = ""    # 站点代码(如 "CA"); 留空则尝试从 name 前缀解析
+    fill_map: dict = field(default_factory=dict)  # {表格列字母: 数据表字段名}, 覆盖全局默认
     year: int | None = None     # 日期所在年份(默认取当前年)
     step_days: int = 7          # 每块间隔天数(周报 = 7)
     max_scan_rows: int = 30000  # 扫描列时的最大行数
@@ -41,8 +46,23 @@ class Target:
         return self.date_col_idx_abs - self.first_col_idx_abs
 
     @property
+    def asin_col_idx_rel(self) -> int:
+        return col_to_index(self.asin_col) - self.first_col_idx_abs
+
+    @property
     def clear_col_idxs_rel(self) -> set[int]:
         return {col_to_index(c) - self.first_col_idx_abs for c in self.clear_cols}
+
+    @property
+    def clear_from_idx_rel(self) -> int | None:
+        if not self.clear_from_col:
+            return None
+        return col_to_index(self.clear_from_col) - self.first_col_idx_abs
+
+    def fill_map_idx_rel(self, default_map: dict | None = None) -> dict[int, str]:
+        """{相对列下标: 数据字段名}。target.fill_map 优先, 否则用全局默认。"""
+        m = self.fill_map or default_map or {}
+        return {col_to_index(col) - self.first_col_idx_abs: fld for col, fld in m.items()}
 
 
 @dataclass
@@ -61,6 +81,9 @@ class AppConfig:
     oauth_userinfo_url: str = "https://docs.qq.com/oauth/v2/userinfo"
     api_base: str = "https://docs.qq.com/openapi"
     token_cache: str = ".td_token.json"
+    data_table: str = ""        # 数据表 xlsx 路径(留空则不自动填数)
+    data_key_sep: str = "；"     # 数据表 key 里 ASIN 与国家的分隔符
+    default_fill_map: dict = field(default_factory=dict)  # 所有 target 共用的列映射
     targets: list[Target] = field(default_factory=list)
 
     def target(self, name: str | None) -> Target:
@@ -97,5 +120,8 @@ def load_config(path: str | Path = "config.toml") -> AppConfig:
         oauth_userinfo_url=app.get("oauth_userinfo_url", "https://docs.qq.com/oauth/v2/userinfo"),
         api_base=app.get("api_base", "https://docs.qq.com/openapi"),
         token_cache=app.get("token_cache", ".td_token.json"),
+        data_table=app.get("data_table", ""),
+        data_key_sep=app.get("data_key_sep", "；"),
+        default_fill_map=app.get("fill_map", {}),
         targets=targets,
     )

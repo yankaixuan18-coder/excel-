@@ -28,6 +28,23 @@ open_id      = "粘贴 open_id"
 # oauth_userinfo_url  = "https://docs.qq.com/oauth/v2/userinfo"
 # api_base            = "https://docs.qq.com/openapi"
 
+# ====== 自动填数(可选) ======
+# 每周从领星ERP等导出数据表 xlsx, 放到固定路径, 复制后按 ASIN+站点 自动填进新块。
+# 留空则关闭填数, 只做"复制行+填日期"。
+# data_table = "data/weekly.xlsx"
+#
+# 列映射: {表格列字母 = 数据表字段名}。所有 target 共用这一份(可被 target 内 fill_map 覆盖)。
+# 字段名取自数据表表头, 可用的有: inventory, sales_volume, order_quantity,
+# replacement_quantity, sales_revenue, sessions_total, ads_exposure, ads_click,
+# ads_spend, ads_revenue, ads_order, refund_quantity, number_of_reviews ... (共48个)
+# 注意: 表格里是公式的列(转化率/CPC/ROAS等)即使写在这里也不会被覆盖, 仍用公式自动算。
+# [app.fill_map]
+# F = "inventory"        # 库存
+# G = "sales_volume"     # 销量
+# H = "order_quantity"   # 订单
+# J = "sales_revenue"    # 销售额
+# ... 按你表格的真实列继续补
+
 
 # ============================================================================
 # 要处理的子表(标签页)。每个 [[targets]] 是一个 sheet。
@@ -46,21 +63,27 @@ parent_text = "父ASIN"        # 块首那一行在 marker_col 里的文字标�
 first_col  = "A"             # 复制时读写的起始列
 last_col   = "AL"            # 复制时读写的结束列(覆盖到你最右边的数据列, 如 BM)
 
-# 每周需要你手动填的"实际数据列", 新块里留空(不照抄上一周的数字)。
-# 按你的表填: 可售天数/库存/销量/订单/销售额/评论/点击/花费 等原始数据列。
-# 说明: 公式单元格永远会被保留并平移(例如父ASIN 汇总行的 SUM), 即便它所在的列
-#       被列进了 clear_cols —— 所以这里只会清掉"手填的数值", 多写几列也不会误伤公式。
-# 如果你想"整块原样复制(连数字一起)", 把这里留成空数组 []。
-clear_cols = ["E", "F", "G", "H", "J", "P", "S", "V", "X", "Y"]
+# 指定留空的列(开了自动填数后, 数据列会被自动填, 这里通常可留空 [])。
+# 公式单元格永远保留并平移(如父ASIN 汇总行的 SUM), 多写几列也不会误伤公式。
+clear_cols = []
 
-year       = 2025            # 日期所在年份(用于跨月/跨年推算); 不填则默认当前年
+# 整行复制时, 此列及其右边的列全部清空(每周手填的备注: 比价方案/效果/改动内容)。
+clear_from_col = "BC"
+
+# --- 自动填数相关(开了 data_table 才生效) ---
+asin_col     = "D"          # ASIN 所在列(用于匹配数据表)
+country_code = "CA"         # 站点代码(CA/US/UK/FR/DE/IT/ES); 留空则从标签名前缀(如"CA外卖包")推断
+# country    = "加拿大"      # 也可直接写中文站点名, 优先级最高
+# fill_map   = { F="inventory", G="sales_volume" }  # 仅本表的列映射, 覆盖全局 [app.fill_map]
+
+year       = 2026            # 日期所在年份(用于跨月/跨年推算); 不填则默认当前年
 step_days  = 7              # 每块间隔天数(周报 = 7)
 
-# 再来一个店铺的例子(按需复制多份):
+# 再来一个标签页/店铺的例子(按需复制多份, 用 run --all 一次跑完):
 # [[targets]]
-# name      = "昕亦"
+# name      = "披萨包-王倩"   # 名字无 CA 前缀 => 站点默认 美国
 # book_id   = "..."
 # sheet_id  = "..."
-# last_col  = "AF"
-# clear_cols = ["E","F","G","H","J"]
-# year      = 2025
+# last_col  = "BE"
+# clear_from_col = "BC"
+# asin_col  = "D"

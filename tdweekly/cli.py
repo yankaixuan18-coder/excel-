@@ -14,7 +14,7 @@ import datetime
 import json
 import sys
 
-from . import core
+from . import core, datafill
 from .auth import authorize, get_valid_token
 from .client import TencentDocsClient
 from .config import AppConfig, Target, load_config
@@ -54,13 +54,43 @@ def cmd_read(cfg: AppConfig, args) -> int:
 
 
 def cmd_run(cfg: AppConfig, args) -> int:
-    t = cfg.target(args.target)
     client = _client(cfg)
+    # 数据表(配置了才加载, 用于自动填数)
+    try:
+        index = datafill.maybe_load(cfg)
+    except Exception as e:
+        print("[数据] 加载数据表失败:", e, file=sys.stderr)
+        return 1
+    if index is not None:
+        print(f"[数据] 已加载数据表 {cfg.data_table}: {len(index)} 条记录")
+
+    targets = cfg.targets if args.all else [cfg.target(args.target)]
+    rc = 0
+    for t in targets:
+        try:
+            _run_one(cfg, client, t, index, args.apply)
+        except Exception as e:
+            print(f"[{t.name}] 出错: {e}", file=sys.stderr)
+            rc = 1
+    return rc
+
+
+def _run_one(cfg: AppConfig, client: TencentDocsClient, t: Target, index, apply: bool) -> None:
     block, new_date = _detect_block_and_date(client, t)
 
     # 读取源块整宽内容(值 + 公式)
     src_range = f"{t.first_col}{block.start_row}:{t.last_col}{block.end_row}"
     source_grid = client.get_grid(t.book_id, t.sheet_id, src_range)
+
+    # 按 ASIN + 站点 匹配数据
+    row_fill = None
+    fill_map_idx = None
+    if index is not None:
+        country = datafill.resolve_country(t)
+        row_fill = datafill.build_row_fill(source_grid, t.asin_col_idx_rel, index, country)
+        fill_map_idx = t.fill_map_idx_rel(cfg.default_fill_map)
+        n = sum(1 for x in row_fill if x)
+        print(f"[{t.name}] 站点={country}, 匹配到数据的行: {n}/{len(row_fill)}")
 
     plan = core.build_copy_plan(
         block,
@@ -68,17 +98,18 @@ def cmd_run(cfg: AppConfig, args) -> int:
         new_date=new_date,
         date_col_index=t.date_col_idx_rel,
         clear_col_indexes=t.clear_col_idxs_rel,
+        clear_from_index=t.clear_from_idx_rel,
+        fill_map_idx=fill_map_idx,
+        row_fill=row_fill,
     )
 
-    # 组装 batchUpdate 请求
     insert_at_0 = block.end_row          # 1基末行之后 = 0基索引 = block.end_row
-    start_row_0 = block.end_row          # 新块第一行(0基) = 旧末行(1基) 对应 0 基同值
+    start_row_0 = block.end_row
     start_col_0 = t.first_col_idx_abs
     reqs = [
         TencentDocsClient.insert_rows_request(t.sheet_id, insert_at_0, plan.height),
         TencentDocsClient.update_cells_request(t.sheet_id, start_row_0, start_col_0, plan.rows),
     ]
-    # 日期列竖向合并: 从日期所在相对行到块末(与源块一致)
     merge_start_0 = start_row_0 + plan.date_row_offset
     merge_end_0_excl = start_row_0 + plan.height
     if merge_end_0_excl - merge_start_0 > 1:
@@ -90,19 +121,13 @@ def cmd_run(cfg: AppConfig, args) -> int:
         )
 
     _print_plan(t, plan)
-
-    if not args.apply:
-        print("\n=== DRY-RUN(未写入) ===")
-        print("将发送的 batchUpdate 请求预览(节选):")
-        print(json.dumps(_preview(reqs), ensure_ascii=False, indent=2)[:4000])
-        print("\n确认无误后加 --apply 真正写入: python run.py run --apply"
-              + (f" --target {args.target}" if args.target else ""))
-        return 0
+    if not apply:
+        print(f"[{t.name}] === DRY-RUN(未写入) === 加 --apply 才真正写入")
+        print(json.dumps(_preview(reqs), ensure_ascii=False, indent=2)[:3000])
+        return
 
     resp = client.batch_update(t.book_id, reqs)
-    print("\n=== 已写入 ===")
-    print(json.dumps(resp, ensure_ascii=False)[:1000])
-    return 0
+    print(f"[{t.name}] === 已写入 ===", json.dumps(resp, ensure_ascii=False)[:500])
 
 
 def cmd_raw_read(cfg: AppConfig, args) -> int:
@@ -148,8 +173,9 @@ def build_parser() -> argparse.ArgumentParser:
     pr = sub.add_parser("read", help="只读: 预览将要新增的行与日期")
     pr.add_argument("--target", help="子表名(默认第一个)")
 
-    pp = sub.add_parser("run", help="复制上一周块 + 填日期(默认 dry-run)")
+    pp = sub.add_parser("run", help="复制上一周块 + 填日期 + 填数(默认 dry-run)")
     pp.add_argument("--target", help="子表名(默认第一个)")
+    pp.add_argument("--all", action="store_true", help="处理 config 里所有 targets")
     pp.add_argument("--apply", action="store_true", help="真正写入(不加则仅预览)")
 
     rr = sub.add_parser("raw-read", help="调试: 打印读取接口原始 JSON")
