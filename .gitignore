@@ -1,0 +1,20 @@
+# 含密钥的真实配置, 不提交
+config.toml
+
+# token 缓存
+.td_token.json
+*.token.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# 编辑器/系统
+.idea/
+.vscode/
+.DS_Store

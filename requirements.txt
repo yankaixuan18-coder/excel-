@@ -1,0 +1,2 @@
+# 唯一的第三方依赖。tomllib(读配置) / unittest(测试) 都是 Python 3.11 标准库。
+requests>=2.28

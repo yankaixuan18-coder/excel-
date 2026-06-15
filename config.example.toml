@@ -1,0 +1,61 @@
+# ============================================================================
+# 腾讯文档「周利润表」自动复制行工具 —— 配置示例
+#
+# 用法: 复制本文件为 config.toml, 按注释填写。
+#   cp config.example.toml config.toml
+# config.toml 含密钥, 已被 .gitignore 忽略, 不会提交。
+# ============================================================================
+
+[app]
+# --- 在腾讯文档开放平台创建应用后获得(详见 docs/SETUP.md) ---
+client_id     = "你的_client_id"
+client_secret = "你的_client_secret"
+
+# 应用后台配置的"回调地址", 必须和这里完全一致。
+# 默认用本机 8888 端口接收授权回调; 若被占用可换端口(并同步改应用后台)。
+redirect_uri  = "http://localhost:8888/callback"
+
+# 授权范围。以官方文档为准, 常见为 "all" 或 "doc"。
+scope         = "all"
+
+# token 缓存文件(已被 .gitignore 忽略)。
+token_cache   = ".td_token.json"
+
+# --- 下面这些 URL 一般不用改; 若官方接口改版, 在此集中调整(见 docs/API_NOTES.md) ---
+# oauth_authorize_url = "https://docs.qq.com/oauth/v2/authorize"
+# oauth_token_url     = "https://docs.qq.com/oauth/v2/token"
+# oauth_userinfo_url  = "https://docs.qq.com/oauth/v2/userinfo"
+# api_base            = "https://docs.qq.com/openapi"
+
+
+# ============================================================================
+# 要处理的子表(标签页)。每个 [[targets]] 是一个 sheet。
+# 你截图里有 4 个店铺标签(伍纺源/昕亦/光伊/春知处), 就配 4 个 [[targets]]。
+# ============================================================================
+
+[[targets]]
+name      = "光伊"            # 随便起的名字, 命令行 --target 用它
+book_id   = "文档ID"          # 取自文档链接 https://docs.qq.com/sheet/<book_id>
+sheet_id  = "子表ID"          # 子表ID, 见 docs/SETUP.md 获取方法
+
+date_col   = "A"             # 日期所在列(合并单元格, 每块仅首行有日期)
+marker_col = "B"             # 用来判定"块到哪一行结束"的列(块内每行都有值, 一般是 SKU 列)
+first_col  = "A"             # 复制时读写的起始列
+last_col   = "AL"            # 复制时读写的结束列(覆盖到你最右边的数据列)
+
+# 每周需要你手动填的"实际数据列", 新块里留空(不照抄上一周的数字)。
+# 按你的表填: 可售天数/库存/销量/订单/销售额/评论/点击/花费 等原始数据列。
+# 如果你想"整块原样复制(连数字一起)", 把这里留成空数组 []。
+clear_cols = ["E", "F", "G", "H", "J", "P", "S", "T", "U", "V", "X", "Y", "Z", "AA"]
+
+year       = 2025            # 日期所在年份(用于跨月/跨年推算); 不填则默认当前年
+step_days  = 7              # 每块间隔天数(周报 = 7)
+
+# 再来一个店铺的例子(按需复制多份):
+# [[targets]]
+# name      = "昕亦"
+# book_id   = "..."
+# sheet_id  = "..."
+# last_col  = "AF"
+# clear_cols = ["E","F","G","H","J"]
+# year      = 2025
