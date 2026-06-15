@@ -2,11 +2,28 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .a1 import col_to_index
+
+
+def clean_book_id(v: str) -> str:
+    """容错: 粘整条链接也能提取出 book_id。
+    https://docs.qq.com/sheet/DSkRYQXFzd3pEZ2Jy?tab=85npxo -> DSkRYQXFzd3pEZ2Jy
+    """
+    v = (v or "").strip()
+    m = re.search(r"/sheet/([^/?#]+)", v)
+    return m.group(1) if m else v
+
+
+def clean_sheet_id(v: str) -> str:
+    """容错: 粘带 tab= 的链接也能提取出 sheet_id。"""
+    v = (v or "").strip()
+    m = re.search(r"[?&]tab=([^&#]+)", v)
+    return m.group(1) if m else v
 
 
 @dataclass
@@ -30,6 +47,11 @@ class Target:
     year: int | None = None     # 日期所在年份(默认取当前年)
     step_days: int = 7          # 每块间隔天数(周报 = 7)
     max_scan_rows: int = 30000  # 扫描列时的最大行数
+
+    def __post_init__(self):
+        # 容错: 用户把整条链接粘进来时, 自动提取 ID
+        self.book_id = clean_book_id(self.book_id)
+        self.sheet_id = clean_sheet_id(self.sheet_id)
 
     # ---- 派生的 0 基索引 ----
     @property
@@ -80,6 +102,8 @@ class AppConfig:
     oauth_token_url: str = "https://docs.qq.com/oauth/v2/token"
     oauth_userinfo_url: str = "https://docs.qq.com/oauth/v2/userinfo"
     api_base: str = "https://docs.qq.com/openapi"
+    # 读取表格的 URL 模板(占位: {base}{book}{sheet}{range})。用 probe 命令实测确定。
+    read_url_template: str = "{base}/sheetbook/v2/{book}/sheets/{sheet}/values/{range}"
     token_cache: str = ".td_token.json"
     data_table: str = ""        # 数据表 xlsx 路径(留空则不自动填数)
     data_key_sep: str = "；"     # 数据表 key 里 ASIN 与国家的分隔符
@@ -119,6 +143,9 @@ def load_config(path: str | Path = "config.toml") -> AppConfig:
         oauth_token_url=app.get("oauth_token_url", "https://docs.qq.com/oauth/v2/token"),
         oauth_userinfo_url=app.get("oauth_userinfo_url", "https://docs.qq.com/oauth/v2/userinfo"),
         api_base=app.get("api_base", "https://docs.qq.com/openapi"),
+        read_url_template=app.get(
+            "read_url_template", "{base}/sheetbook/v2/{book}/sheets/{sheet}/values/{range}"
+        ),
         token_cache=app.get("token_cache", ".td_token.json"),
         data_table=app.get("data_table", ""),
         data_key_sep=app.get("data_key_sep", "；"),

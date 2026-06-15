@@ -130,6 +130,30 @@ def _run_one(cfg: AppConfig, client: TencentDocsClient, t: Target, index, apply:
     print(f"[{t.name}] === 已写入 ===", json.dumps(resp, ensure_ascii=False)[:500])
 
 
+def cmd_probe(cfg: AppConfig, args) -> int:
+    """实测多种候选读取地址, 找出哪个能返回 200。"""
+    t = cfg.target(args.target)
+    client = _client(cfg)
+    print(f"[{t.name}] 探测读取地址 book={t.book_id} sheet={t.sheet_id} ...\n")
+    results = client.probe_read(t.book_id, t.sheet_id)
+    ok = None
+    for r in results:
+        mark = "✅" if r["status"] == 200 else "  "
+        print(f"{mark} [{r['status']}] {r['url']}")
+        if r["status"] == 200 and ok is None:
+            ok = r
+    print()
+    if ok:
+        print("=== 第一个成功(200)的返回内容(节选), 请把这段发我 ===")
+        print(ok["url"])
+        print(ok["body"])
+    else:
+        print("没有候选返回 200。请把上面每行的状态码, 以及下面这条的返回体发我:")
+        # 打印第一个非 200 的 body 以便诊断
+        print(results[0]["body"])
+    return 0
+
+
 def cmd_raw_read(cfg: AppConfig, args) -> int:
     t = cfg.target(args.target)
     client = _client(cfg)
@@ -206,6 +230,9 @@ def build_parser() -> argparse.ArgumentParser:
     ph.add_argument("--target", help="子表名(默认第一个)")
     ph.add_argument("--row", type=int, help="表头所在行(默认 2)")
 
+    pb = sub.add_parser("probe", help="实测多种候选读取地址, 确定正确端点")
+    pb.add_argument("--target", help="子表名(默认第一个)")
+
     rr = sub.add_parser("raw-read", help="调试: 打印读取接口原始 JSON")
     rr.add_argument("--target", help="子表名(默认第一个)")
     rr.add_argument("--range", help="读取范围, 如 A1:B5")
@@ -220,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
         "read": cmd_read,
         "run": cmd_run,
         "headers": cmd_headers,
+        "probe": cmd_probe,
         "raw-read": cmd_raw_read,
     }
     try:

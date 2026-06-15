@@ -64,17 +64,48 @@ class TencentDocsClient:
     # ------------------------------------------------------------------ #
     # 读取
     # ------------------------------------------------------------------ #
+    def _read_url(self, book_id: str, sheet_id: str, a1_range: str) -> str:
+        return self.cfg.read_url_template.format(
+            base=self.cfg.api_base, book=book_id, sheet=sheet_id, range=a1_range
+        )
+
     def get_grid_raw(self, book_id: str, sheet_id: str, a1_range: str) -> dict:
         """读取一段区域, 返回原始 JSON(调试用)。
 
         a1_range 形如 'A1:B30000' 或 'A3:BZ8'。
         valueRenderOption=FORMULA 让返回里带上公式串(以便复制时平移行号)。
+        读取地址用 cfg.read_url_template(可用 probe 命令实测确定)。
         """
-        url = self._book_url(book_id, f"/sheets/{sheet_id}/values/{a1_range}")
+        url = self._read_url(book_id, sheet_id, a1_range)
         params = {"valueRenderOption": "FORMULA"}
         r = requests.get(url, headers=self._headers(), params=params, timeout=60)
         _check(r)
         return r.json()
+
+    def probe_read(self, book_id: str, sheet_id: str, a1_range: str = "A1:B3") -> list[dict]:
+        """实测多种候选读取地址, 返回每个的状态, 用于确定正确端点。"""
+        candidates = [
+            "{base}/sheetbook/v2/{book}/sheets/{sheet}/values/{range}",
+            "{base}/sheetbook/v2/{book}/values/{sheet}!{range}",
+            "{base}/sheetbook/v2/{book}/values/{range}",
+            "{base}/sheetbook/v2/{book}/sheets/{sheet}?range={range}",
+            "{base}/sheetbook/v2/{book}/sheets/{sheet}/cells/{range}",
+            "{base}/sheetbook/v2/{book}/sheets/{sheet}",
+            "{base}/sheetbook/v2/{book}/sheets",
+            "{base}/sheetbook/v2/{book}",
+            "{base}/sheet/v2/{book}/sheets/{sheet}/values/{range}",
+            "{base}/drive/v2/files/{book}",  # 文件元数据: 验证 token/book 是否有效
+        ]
+        results = []
+        for tmpl in candidates:
+            url = tmpl.format(base=self.cfg.api_base, book=book_id, sheet=sheet_id, range=a1_range)
+            try:
+                r = requests.get(url, headers=self._headers(), timeout=30)
+                body = r.text[:600]
+                results.append({"template": tmpl, "url": url, "status": r.status_code, "body": body})
+            except Exception as e:  # pragma: no cover - 联网
+                results.append({"template": tmpl, "url": url, "status": "ERR", "body": str(e)[:300]})
+        return results
 
     def get_grid(self, book_id: str, sheet_id: str, a1_range: str) -> list[list[dict]]:
         """读取一段区域, 归一化成二维 [{'value':.., 'formula':..}]。"""
