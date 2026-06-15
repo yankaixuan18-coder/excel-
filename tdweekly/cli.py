@@ -28,7 +28,7 @@ def _detect_block_and_date(client: TencentDocsClient, t: Target):
     """读取列 -> 识别上一周块 -> 推算新日期。返回 (block, new_date)。"""
     date_col = client.get_column(t.book_id, t.sheet_id, t.date_col, t.max_scan_rows)
     marker_col = client.get_column(t.book_id, t.sheet_id, t.marker_col, t.max_scan_rows)
-    block = core.find_last_block(date_col, marker_col)
+    block = core.find_last_block(marker_col, date_col, t.parent_text)
     year = t.year or datetime.date.today().year
     new_date, _, _ = core.next_range(block.prev_date, year, t.step_days)
     return block, new_date
@@ -78,12 +78,14 @@ def cmd_run(cfg: AppConfig, args) -> int:
         TencentDocsClient.insert_rows_request(t.sheet_id, insert_at_0, plan.height),
         TencentDocsClient.update_cells_request(t.sheet_id, start_row_0, start_col_0, plan.rows),
     ]
-    # 日期列竖向合并(若块高 > 1)
-    if plan.height > 1:
+    # 日期列竖向合并: 从日期所在相对行到块末(与源块一致)
+    merge_start_0 = start_row_0 + plan.date_row_offset
+    merge_end_0_excl = start_row_0 + plan.height
+    if merge_end_0_excl - merge_start_0 > 1:
         dcol0 = t.date_col_idx_abs
         reqs.append(
             TencentDocsClient.merge_cells_request(
-                t.sheet_id, start_row_0, start_row_0 + plan.height, dcol0, dcol0 + 1
+                t.sheet_id, merge_start_0, merge_end_0_excl, dcol0, dcol0 + 1
             )
         )
 

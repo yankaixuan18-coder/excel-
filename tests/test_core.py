@@ -6,10 +6,13 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from datetime import date
+
 from tdweekly.core import (
     Block,
     build_copy_plan,
     find_last_block,
+    format_range,
     next_range,
     parse_range,
 )
@@ -34,34 +37,59 @@ class TestDateRange(unittest.TestCase):
         # 跨年: 12.27-1.2 (上一周 12.27 起) -> 下一周 1.3-1.9
         self.assertEqual(next_range("12.27-1.2", 2025)[0], "1.3-1.9")
 
+    def test_short_format_parse(self):
+        # 李子向式简写: 6.7-13 = 6月7日到6月13日
+        s, e = parse_range("6.7-13", 2026)
+        self.assertEqual((s.month, s.day), (6, 7))
+        self.assertEqual((e.month, e.day), (6, 13))
+
+    def test_short_format_next_week_keeps_style(self):
+        # 简写式应继续输出简写式
+        self.assertEqual(next_range("6.7-13", 2026)[0], "6.14-20")
+        self.assertEqual(next_range("6.14-20", 2026)[0], "6.21-27")
+
+    def test_format_range_short(self):
+        self.assertEqual(format_range(date(2026, 6, 7), date(2026, 6, 13), "short"), "6.7-13")
+
+    def test_short_crossing_month_falls_back_to_full(self):
+        # 起止跨月时, 简写式无法表达, 自动回退完整式
+        self.assertEqual(format_range(date(2026, 6, 29), date(2026, 7, 2), "short"), "6.29-7.2")
+
 
 class TestFindLastBlock(unittest.TestCase):
-    def _columns(self):
-        # 模拟 A 列(日期, 仅块首有值)与 B 列(SKU, 块内每行有值)
-        # 行1-2 表头; 块1 = 行3-5(5.31-6.6); 块2 = 行6-8(6.7-6.13)
-        date_col = ["父ASIN", "日期", "5.31-6.6", "", "", "6.7-6.13", "", ""]
+    def test_last_block_parent_anchored(self):
+        # 光伊式: 父ASIN 行就是块首, 日期也在该行(offset 0); 两个块背靠背
         marker = ["BD_IFDB", "SKU", "父ASIN", "sku1", "sku2", "父ASIN", "sku1", "sku2"]
-        return date_col, marker
-
-    def test_last_block(self):
-        date_col, marker = self._columns()
-        b = find_last_block(date_col, marker)
+        date_col = ["父ASIN", "日期", "5.31-6.6", "", "", "6.7-6.13", "", ""]
+        b = find_last_block(marker, date_col)
         self.assertEqual(b.start_row, 6)
         self.assertEqual(b.end_row, 8)
         self.assertEqual(b.height, 3)
+        self.assertEqual(b.date_offset, 0)
         self.assertEqual(b.prev_date, "6.7-6.13")
+
+    def test_lizixiang_layout_date_below_parent(self):
+        # 李子向式: 行1黄标题"父ASIN", 行2表头, 行3蓝"父ASIN", 行4-6是SKU, 日期在行4
+        marker = ["父ASIN", "SKU", "父ASIN", "蓝色", "橙色", "红色", ""]
+        date_col = ["", "日期", "", "6.7-13", "", "", ""]
+        b = find_last_block(marker, date_col)
+        self.assertEqual(b.start_row, 3)      # 块从蓝"父ASIN"行开始
+        self.assertEqual(b.end_row, 6)        # 到最后一个SKU
+        self.assertEqual(b.height, 4)         # 父ASIN + 3 SKU
+        self.assertEqual(b.date_offset, 1)    # 日期在父ASIN行的下一行
+        self.assertEqual(b.prev_date, "6.7-13")
+
+    def test_fallback_to_date_anchor_when_no_parent(self):
+        # 没有"父ASIN"行时, 回退按日期定位
+        marker = ["SKU", "sku1", "sku2", ""]
+        date_col = ["日期", "6.7-6.13", "", ""]
+        b = find_last_block(marker, date_col)
+        self.assertEqual(b.start_row, 2)
+        self.assertEqual(b.end_row, 3)
 
     def test_no_block_raises(self):
         with self.assertRaises(ValueError):
             find_last_block(["日期", "SKU"], ["x", "y"])
-
-    def test_trailing_blank_rows_ignored(self):
-        # B 列末尾有空行不应被算进块
-        date_col = ["日期", "6.7-6.13", "", ""]
-        marker = ["SKU", "父ASIN", "sku1", ""]
-        b = find_last_block(date_col, marker)
-        self.assertEqual(b.end_row, 3)  # 行4 是空, 不算
-        self.assertEqual(b.height, 2)
 
 
 class TestBuildCopyPlan(unittest.TestCase):
@@ -147,6 +175,19 @@ class TestBuildCopyPlan(unittest.TestCase):
         # SKU 行的手填数值应留空
         self.assertEqual(plan.rows[1][2].kind, "blank")
         self.assertEqual(plan.rows[2][2].kind, "blank")
+
+    def test_date_offset_places_date_on_correct_row(self):
+        # 李子向式: 块首是父ASIN行, 日期在第2行(offset 1)
+        block = Block(start_row=3, end_row=6, prev_date="6.7-13", date_offset=1)  # height 4
+        grid = [[{"value": "", "formula": None}] for _ in range(4)]
+        grid[1][0] = {"value": "6.7-13", "formula": None}  # 源日期在 offset 1
+        plan = build_copy_plan(
+            block, grid, new_date="6.14-20", date_col_index=0, clear_col_indexes=set()
+        )
+        self.assertEqual(plan.date_row_offset, 1)
+        self.assertEqual(plan.rows[0][0].kind, "blank")   # 父ASIN行的日期列留空
+        self.assertEqual(plan.rows[1][0].kind, "value")   # 日期写在 offset 1
+        self.assertEqual(plan.rows[1][0].value, "6.14-20")
 
 
 if __name__ == "__main__":

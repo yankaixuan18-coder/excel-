@@ -17,7 +17,8 @@ class Target:
     book_id: str          # 文档(整个文件)的 ID, 取自分享链接
     sheet_id: str         # 子表(标签页)的 ID
     date_col: str = "A"   # 日期所在列
-    marker_col: str = "B" # 用来判定块末行的列(块内每行都非空, 通常是 SKU 列)
+    marker_col: str = "B" # 定位"父ASIN"行与块末行的列(通常是 SKU 列)
+    parent_text: str = "父ASIN"  # 块首标记文字(出现在 marker_col)
     first_col: str = "A"  # 读取/写入的起始列
     last_col: str = "BZ"  # 读取/写入的结束列(覆盖你所有数据列即可)
     clear_cols: list[str] = field(default_factory=list)  # 每周手动填、新块留空的列
