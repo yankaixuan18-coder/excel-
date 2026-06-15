@@ -166,11 +166,33 @@ def load_token(cfg: AppConfig) -> Token | None:
     return Token(**json.loads(p.read_text()))
 
 
+def token_from_config(cfg: AppConfig) -> Token:
+    """方式一: 直接用 config 里填的 access_token / open_id(无需 OAuth)。"""
+    return Token(
+        access_token=cfg.access_token,
+        refresh_token="",
+        open_id=cfg.open_id,
+        expires_at=time.time() + 30 * 86400,  # 仅作信息; 真过期时接口会返回鉴权错误
+    )
+
+
 def get_valid_token(cfg: AppConfig) -> Token:
-    """返回一个有效 token: 缓存命中且未过期则直接用; 过期则刷新; 没有则要求先 auth。"""
+    """返回一个有效 token。
+
+    方式一(推荐): config 里填了 access_token + open_id -> 直接使用。
+    方式二(OAuth): 否则走授权码流程的缓存/刷新(需先 `python run.py auth`)。
+    """
+    if cfg.access_token and cfg.open_id:
+        return token_from_config(cfg)
+    if cfg.access_token and not cfg.open_id:
+        raise RuntimeError("config.toml 里填了 access_token 但缺 open_id, 两个都要填。")
+
     token = load_token(cfg)
     if token is None:
-        raise RuntimeError("尚未授权, 请先运行: python run.py auth")
+        raise RuntimeError(
+            "尚未配置凭据。请在 config.toml 填 access_token + open_id(推荐), "
+            "或走 OAuth 先运行: python run.py auth"
+        )
     if token.is_expired():
         print("[auth] token 已过期, 正在刷新…")
         token = refresh(cfg, token)

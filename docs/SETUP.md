@@ -2,22 +2,25 @@
 
 整个配置只需做一次。之后每周就是一条命令的事。
 
-## 1. 注册腾讯文档开放平台开发者并创建应用
+## 1. 拿到 3 个凭据值（推荐方式，最简单）
 
-1. 打开开放平台：<https://docs.qq.com/open/>（"开放平台/开发者"入口）。
-2. 用你的账号登录，按提示**注册成为开发者**（可能需要资质审核，个人开发者按页面引导走）。
-3. 创建一个**应用**，拿到：
-   - **Client ID（client_id）**
-   - **Client Secret（client_secret）**
-4. 在应用设置里配置**回调地址（redirect_uri）**，填：
-   ```
-   http://localhost:8888/callback
-   ```
-   必须和 `config.toml` 里的 `redirect_uri` 完全一致。
-5. 给应用勾选所需**权限/scope**（至少要有读写在线表格的权限，例如 `doc`）。
+1. 打开开放平台：<https://docs.qq.com/open/>，登录并完成开发者资质认证（显示**审核通过**）。
+2. 在「**开发者信息**」页面点"复制"，记下这 3 个值：
+   - **client_id（应用ID）**
+   - **access_token**（有效期约 30 天，过期回此页重新复制）
+   - **open_id**
+
+> 有这 3 个值就够了：**不需要 client_secret，也不需要 OAuth 授权（第 4 节的 `auth` 可跳过）**。
+
+<details><summary>（可选）方式二：走 OAuth 授权码流程</summary>
+
+如果你不直填 token，而想用浏览器授权：在应用设置里拿到 **client_secret**、配置
+**回调地址** `http://localhost:8888/callback`（要与 config 一致）、勾选读写在线表格权限，
+然后把 `client_secret`/`redirect_uri` 填进 `config.toml` 并运行 `python run.py auth`。
+官方授权说明：<https://docs.qq.com/open/document/app/oauth2/>
+</details>
 
 > 官方接入教程：<https://docs.qq.com/open/document/app/get_started.html>
-> 授权说明：<https://docs.qq.com/open/document/app/oauth2/>
 
 ## 2. 找到「文档ID」与「子表ID」
 
@@ -44,7 +47,7 @@ cp config.example.toml config.toml
 
 | 字段 | 含义 | 怎么填 |
 |------|------|--------|
-| `client_id` / `client_secret` | 应用凭据 | 第 1 步拿到 |
+| `client_id` / `access_token` / `open_id` | 凭据三件套 | 第 1 步从「开发者信息」页复制 |
 | `book_id` / `sheet_id` | 文档/子表 | 第 2 步拿到 |
 | `date_col` | 日期列 | 一般 `A` |
 | `marker_col` | 判定块末行的列 | 一般 `B`（SKU 列，块内每行都有值） |
@@ -66,10 +69,10 @@ cp config.example.toml config.toml
 - 想"**整块原样复制（连上周数字一起）**"？把 `clear_cols = []`。
 - 不确定填哪些列？先 `clear_cols = []` 跑 dry-run，看预览里哪些列被当成常量照抄了（公式列会显示成公式），再把"实际数据列"挑进来。
 
-## 4. 授权 + 试跑
+## 4. 试跑（直填 token 模式无需 `auth`）
 
 ```bash
-python run.py auth                       # 浏览器登录并同意
+# python run.py auth                     # 仅 OAuth 方式才需要; 直填 token 可跳过
 python run.py read --target 光伊         # 看识别到的块/新日期对不对
 python run.py run  --target 光伊         # dry-run 预览写入内容
 python run.py run  --target 光伊 --apply # 确认后真正写入

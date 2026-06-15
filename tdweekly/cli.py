@@ -35,6 +35,9 @@ def _detect_block_and_date(client: TencentDocsClient, t: Target):
 
 
 def cmd_auth(cfg: AppConfig, args) -> int:
+    if cfg.access_token and cfg.open_id:
+        print("已在 config.toml 配置 access_token + open_id, 无需授权, 可直接运行 read / run。")
+        return 0
     authorize(cfg)
     return 0
 

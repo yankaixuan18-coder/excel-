@@ -47,7 +47,11 @@ class Target:
 @dataclass
 class AppConfig:
     client_id: str
-    client_secret: str
+    # —— 方式一(推荐, 最简单): 直接从开放平台「开发者信息」页复制 ——
+    access_token: str = ""   # 有效期约 30 天, 过期回那个页面重新复制
+    open_id: str = ""
+    # —— 方式二(可选): 走 OAuth 授权码流程时才需要 ——
+    client_secret: str = ""
     redirect_uri: str = "http://localhost:8888/callback"
     scope: str = "all"
     # 各端点 base(若官方改版可在此集中调整, 详见 docs/API_NOTES.md)
@@ -82,7 +86,9 @@ def load_config(path: str | Path = "config.toml") -> AppConfig:
     targets = [Target(**t) for t in raw.get("targets", [])]
     return AppConfig(
         client_id=app["client_id"],
-        client_secret=app["client_secret"],
+        access_token=app.get("access_token", ""),
+        open_id=app.get("open_id", ""),
+        client_secret=app.get("client_secret", ""),
         redirect_uri=app.get("redirect_uri", "http://localhost:8888/callback"),
         scope=app.get("scope", "all"),
         oauth_authorize_url=app.get("oauth_authorize_url", "https://docs.qq.com/oauth/v2/authorize"),

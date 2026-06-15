@@ -7,19 +7,20 @@
 # ============================================================================
 
 [app]
-# --- 在腾讯文档开放平台创建应用后获得(详见 docs/SETUP.md) ---
-client_id     = "你的_client_id"
-client_secret = "你的_client_secret"
+# ============ 方式一(推荐, 最简单) ============
+# 直接到开放平台「开发者信息」页, 把这三个值复制过来即可, 不需要 client_secret、
+# 也不需要跑 `python run.py auth`。
+#   access_token 有效期约 30 天, 过期了回那个页面重新复制粘贴一次就行。
+client_id    = "粘贴 client_id(应用ID)"
+access_token = "粘贴 access_token"
+open_id      = "粘贴 open_id"
 
-# 应用后台配置的"回调地址", 必须和这里完全一致。
-# 默认用本机 8888 端口接收授权回调; 若被占用可换端口(并同步改应用后台)。
-redirect_uri  = "http://localhost:8888/callback"
-
-# 授权范围。以官方文档为准, 常见为 "all" 或 "doc"。
-scope         = "all"
-
-# token 缓存文件(已被 .gitignore 忽略)。
-token_cache   = ".td_token.json"
+# ============ 方式二(可选, 走 OAuth 授权码流程时才需要) ============
+# 如果你不用上面的直填 token, 而是走浏览器授权, 才需要下面这些; 否则留空即可。
+# client_secret = "你的_client_secret"
+# redirect_uri  = "http://localhost:8888/callback"
+# scope         = "all"
+# token_cache   = ".td_token.json"
 
 # --- 下面这些 URL 一般不用改; 若官方接口改版, 在此集中调整(见 docs/API_NOTES.md) ---
 # oauth_authorize_url = "https://docs.qq.com/oauth/v2/authorize"

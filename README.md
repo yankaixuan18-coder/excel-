@@ -28,15 +28,12 @@
 # 0) 装依赖(只有 requests; Python 需 3.11+)
 pip install -r requirements.txt
 
-# 1) 一次性配置: 在腾讯文档开放平台建应用、拿 client_id/secret、找文档ID/子表ID
-#    详细图文步骤见 docs/SETUP.md
+# 1) 一次性配置: 到开放平台「开发者信息」页复制 client_id/access_token/open_id, 找文档ID/子表ID
+#    详细步骤见 docs/操作流程.md (或 docs/SETUP.md)
 cp config.example.toml config.toml
-#    用编辑器填好 config.toml
+#    用编辑器填好 config.toml(直填 token 最简单, 无需 client_secret / 无需授权)
 
-# 2) 一次性授权(浏览器登录腾讯文档并同意)
-python run.py auth
-
-# 3) 先只读预览, 确认识别到的"上一周块"和"新日期"对不对
+# 2) 先只读预览, 确认识别到的"上一周块"和"新日期"对不对
 python run.py read --target 光伊
 
 # 4) 预览这次会怎么写(仍然不写入)

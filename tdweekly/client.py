@@ -31,6 +31,16 @@ from .auth import Token
 from .config import AppConfig, Target
 
 
+def _check(resp: requests.Response) -> None:
+    """统一处理鉴权类错误, 给出可读提示。"""
+    if resp.status_code in (401, 403):
+        raise RuntimeError(
+            f"鉴权失败(HTTP {resp.status_code})。access_token 可能已过期(有效期约30天)或权限不足。"
+            f"请回开放平台「开发者信息」页重新复制 access_token 填到 config.toml。\n返回: {resp.text[:300]}"
+        )
+    resp.raise_for_status()
+
+
 class TencentDocsClient:
     def __init__(self, cfg: AppConfig, token: Token):
         self.cfg = cfg
@@ -63,7 +73,7 @@ class TencentDocsClient:
         url = self._book_url(book_id, f"/sheets/{sheet_id}/values/{a1_range}")
         params = {"valueRenderOption": "FORMULA"}
         r = requests.get(url, headers=self._headers(), params=params, timeout=60)
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
     def get_grid(self, book_id: str, sheet_id: str, a1_range: str) -> list[list[dict]]:
@@ -83,7 +93,7 @@ class TencentDocsClient:
         url = self._book_url(book_id, ":batchUpdate")
         body = {"requests": requests_list}
         r = requests.post(url, headers=self._headers(), data=json.dumps(body), timeout=60)
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
     # ---- 请求体构造器(对照官方文档核对字段名) ---- #
